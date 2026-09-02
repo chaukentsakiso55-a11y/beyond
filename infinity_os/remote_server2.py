@@ -1,7 +1,7 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, quote
 from pathlib import Path
-import base64, json, mimetypes, socket, threading, time
+import base64, html, json, mimetypes, socket, threading, time
 from .paths import SHARE
 
 PHONE_DIR=Path(__file__).resolve().parent/'phone'
@@ -29,19 +29,23 @@ class RemoteServer2:
                 t=(q.get('token') or [''])[0];return t if owner.pairing.authorize(t) else None
             def body(self,limit=12000000):
                 n=min(int(self.headers.get('Content-Length','0')),limit);return json.loads(self.rfile.read(n).decode() or '{}')
+            def pair_page(self,q,error=''):
+                pin=html.escape((q.get('pin') or [''])[0][:6],quote=True)
+                name=html.escape((q.get('name') or ['My phone'])[0][:80],quote=True)
+                message="<p style='color:#ff6b86'>Invalid or expired PIN.</p>" if error else ''
+                page=(PHONE_DIR/'pair.html').read_text(encoding='utf-8')
+                return page.replace('{{PIN}}',pin).replace('{{NAME}}',name).replace('{{ERROR}}',message)
             def do_GET(self):
                 u=urlparse(self.path);q=parse_qs(u.query)
                 if u.path in ('/icon.svg','/manifest.webmanifest','/sw.js'):
                     file=PHONE_DIR/u.path.lstrip('/');typ={'icon.svg':'image/svg+xml','manifest.webmanifest':'application/manifest+json','sw.js':'application/javascript'}[file.name];self.sendx(file.read_bytes(),typ);return
                 if u.path=='/pair':
-                    name=(q.get('name') or ['Phone'])[0];t=owner.pairing.pair((q.get('pin') or [''])[0],name)
-                    if t:owner.core.mesh.register_remote(name,'phone',['remote-control','aegis','files','notifications','clipboard'],True)
-                    if not t:
-                        html=(PHONE_DIR/'pair.html').read_text(encoding='utf-8').replace('</form>',"<p style='color:#ff6b86'>Invalid or expired PIN.</p></form>")
-                        self.sendx(html,'text/html; charset=utf-8',403);return
-                    self.send_response(302);self.send_header('Location','/?token='+quote(t));self.end_headers();return
+                    self.sendx(self.pair_page(q),'text/html; charset=utf-8');return
                 if u.path=='/':
-                    t=(q.get('token') or [''])[0];name='index.html' if t and owner.pairing.authorize(t) else 'pair.html';self.sendx((PHONE_DIR/name).read_text(encoding='utf-8'),'text/html; charset=utf-8');return
+                    t=(q.get('token') or [''])[0]
+                    if t and owner.pairing.authorize(t):self.sendx((PHONE_DIR/'index.html').read_text(encoding='utf-8'),'text/html; charset=utf-8')
+                    else:self.sendx(self.pair_page(q),'text/html; charset=utf-8')
+                    return
                 t=self.auth(q)
                 if not t:self.sendx({'error':'unauthorized'},status=401);return
                 if u.path=='/api/status':self.sendx(owner.core.status());return
@@ -56,7 +60,16 @@ class RemoteServer2:
                     self.sendx(p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'application/octet-stream',extra={'Content-Disposition':f'attachment; filename="{p.name}"'});return
                 self.send_error(404)
             def do_POST(self):
-                u=urlparse(self.path);q=parse_qs(u.query);t=self.auth(q)
+                u=urlparse(self.path);q=parse_qs(u.query)
+                if u.path=='/pair':
+                    n=min(int(self.headers.get('Content-Length','0')),4096)
+                    form=parse_qs(self.rfile.read(n).decode('utf-8','replace'))
+                    pin=(form.get('pin') or [''])[0].strip();name=(form.get('name') or ['My phone'])[0].strip() or 'My phone'
+                    t=owner.pairing.pair(pin,name)
+                    if not t:self.sendx(self.pair_page({'pin':[pin],'name':[name]},True),'text/html; charset=utf-8',403);return
+                    owner.core.mesh.register_remote(name,'phone',['remote-control','aegis','files','notifications','clipboard'],True)
+                    self.send_response(303);self.send_header('Location','/?token='+quote(t));self.send_header('Cache-Control','no-store');self.end_headers();return
+                t=self.auth(q)
                 if not t:self.sendx({'error':'unauthorized'},status=401);return
                 if u.path=='/api/revoke':owner.pairing.revoke(t);self.sendx({'ok':True});return
                 if u.path=='/api/aegis':
