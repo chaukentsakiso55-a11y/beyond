@@ -7,8 +7,12 @@ class RemoteTests(unittest.TestCase):
         c=InfinityCore();srv=RemoteServer2(c.pairing,c,0)
         try:
             srv.start();port=srv.httpd.server_address[1];pin=c.pairing.pin
-            opener=urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
-            response=opener.open(f'http://127.0.0.1:{port}/pair?pin={pin}&name=TestPhone')
+            page=urllib.request.urlopen(f'http://127.0.0.1:{port}/pair?pin={pin}&name=TestPhone').read().decode()
+            self.assertIn(f'value="{pin}"',page)
+            self.assertEqual(c.pairing.pin,pin)
+            data=urllib.parse.urlencode({'pin':pin,'name':'TestPhone'}).encode()
+            request=urllib.request.Request(f'http://127.0.0.1:{port}/pair',data=data,method='POST')
+            response=urllib.request.build_opener(urllib.request.HTTPRedirectHandler()).open(request)
             token=urllib.parse.parse_qs(urllib.parse.urlparse(response.geturl()).query)['token'][0]
             status=json.loads(urllib.request.urlopen(f'http://127.0.0.1:{port}/api/status?token={urllib.parse.quote(token)}').read())
             self.assertEqual(status['version'],'7.9.0-ultimate')
