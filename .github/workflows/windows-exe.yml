@@ -1,0 +1,64 @@
+name: Build Infinity Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install desktop build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-minimal.txt
+          pip install pyinstaller
+
+      - name: Validate Python source
+        run: python -m compileall -q infinity_os main.py
+
+      - name: Build Infinity OS Windows EXE
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name "Infinity-OS" `
+            --icon "assets/infinity.ico" `
+            --add-data "assets;assets" `
+            --add-data "config;config" `
+            --add-data "plugins;plugins" `
+            --add-data "infinity_os/phone;infinity_os/phone" `
+            --add-data "infinity_os/ui/pages;infinity_os/ui/pages" `
+            main.py
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/Infinity-OS.exe")) { throw "Infinity-OS.exe was not created" }
+          Get-Item "dist/Infinity-OS.exe" | Format-List Name,Length,LastWriteTime
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Infinity-OS-Windows-EXE
+          path: dist/Infinity-OS.exe
+          if-no-files-found: error
+          retention-days: 90
