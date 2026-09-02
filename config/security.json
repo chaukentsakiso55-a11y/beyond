@@ -1,0 +1,18 @@
+{
+  "files.read": "always_allow",
+  "files.write": "ask",
+  "commands.execute": "ask",
+  "apps.launch": "session",
+  "apps.control": "ask",
+  "browser.navigate": "session",
+  "browser.form_submit": "ask",
+  "messages.send": "ask",
+  "clipboard.read": "ask",
+  "clipboard.write": "session",
+  "microphone": "ask",
+  "camera": "deny",
+  "power.control": "deny",
+  "plugins.execute": "ask",
+  "network.remote": "session",
+  "network.discovery": "ask"
+}

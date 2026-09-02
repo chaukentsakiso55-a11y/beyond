@@ -1,0 +1,40 @@
+as exc:QMessageBox.critical(self,'Forge',str(exc))
+    def close_editor_tab(self,index):
+        widget=self.editor_tabs.widget(index);self.editor_tabs.removeTab(index);widget.deleteLater()
+    def run_forge(self,kind):
+        if not self.project:return
+        fn={'git':self.core.forge.git_status,'diff':self.core.forge.git_diff,'test':self.core.forge.test}[kind];w=Worker(fn,self.project);w.signals.result.connect(lambda r:self.terminal.setPlainText((r.get('stdout') or '')+'\n'+(r.get('stderr') or '')));self.pool.start(w)
+    def run_terminal(self):
+        if not self.project or not self.command.text().strip():return
+        if self.core.security.decision('commands.execute')=='deny':QMessageBox.warning(self,'Forge','commands.execute is denied.');return
+        if self.core.security.decision('commands.execute')=='ask' and QMessageBox.question(self,'Terminal Permission','Run this command?\n\n'+self.command.text())!=QMessageBox.Yes:return
+        cmd=self.command.text();self.command.clear();w=Worker(self.core.forge.run,self.project,cmd);w.signals.result.connect(lambda r:self.terminal.appendPlainText(f"\n∞> {cmd}\n{r.get('stdout','')}\n{r.get('stderr','')}"));self.pool.start(w)
+    def aegis_review(self):
+        editor=self.editor_tabs.currentWidget()
+        if not editor:return
+        path=editor.property('file_path');prompt=f"Review this file as the Infinity Forge coding agent. Identify bugs, architectural risks and a safe improvement plan. Do not rewrite the architecture unless necessary.\n\nFILE: {path}\n\n{editor.toPlainText()[:70000]}"
+        self.terminal.appendPlainText('\nAEGIS is reviewing '+str(path)+'…')
+        w=Worker(self.core.router.ask,prompt,'coding');w.signals.result.connect(lambda r:self.terminal.appendPlainText('\nAEGIS REVIEW\n'+r.get('text','')));self.pool.start(w)
+    def edit_locks(self):
+        if not self.project:return
+        root=str(self.project.resolve());current='\n'.join(self.core.forge.locks.get(root,['README.md','ARCHITECTURE.md']))
+        text,ok=QInputDialog.getMultiLineText(self,'Architecture Locks','Protected patterns, one per line:',current)
+        if ok:self.core.forge.set_lock(self.project,[x.strip() for x in text.splitlines() if x.strip()])
+
+class StudyPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.remaining=0;self.total=0;self.timer=QTimer(self);self.timer.timeout.connect(self.tick);lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Study & Focus Center','Deep-work sessions integrated into Infinity without replacing StudyLock.'));hero=Card();hl=QVBoxLayout(hero);self.clock=QLabel('25:00');self.clock.setAlignment(Qt.AlignCenter);self.clock.setStyleSheet('font-size:54px;font-weight:900;color:#46e6ff');self.state=QLabel('READY FOR DEEP WORK');self.state.setAlignment(Qt.AlignCenter);self.state.setStyleSheet('color:#7896aa');row=QHBoxLayout();self.minutes=QSpinBox();self.minutes.setRange(5,300);self.minutes.setValue(25);start=QPushButton('Start Focus');start.setObjectName('Primary');start.clicked.connect(self.start);stop=QPushButton('End');stop.clicked.connect(self.stop);row.addStretch();row.addWidget(self.minutes);row.addWidget(start);row.addWidget(stop);row.addStretch();hl.addWidget(self.clock);hl.addWidget(self.state);hl.addLayout(row);lay.addWidget(hero);grid=QGridLayout();intent=Card();il=QVBoxLayout(intent);il.addWidget(QLabel('SESSION INTENT'));self.intent=QPlainTextEdit();self.intent.setPlaceholderText('What are you trying to complete?');il.addWidget(self.intent);grid.addWidget(intent,0,0);total=Card();tl=QVBoxLayout(total);tl.addWidget(QLabel('FOCUS TOTAL'));self.total_label=QLabel('0 min');self.total_label.setStyleSheet('font-size:32px;font-weight:800');tl.addWidget(self.total_label);save=QPushButton('Save reflection to Memory');save.clicked.connect(self.save_reflection);tl.addWidget(save);grid.addWidget(total,0,1);lay.addLayout(grid);lay.addStretch()
+    def start(self):
+        self.core.focus.start(self.minutes.value(),self.intent.toPlainText().strip());self.state.setText('FOCUS SESSION ACTIVE');self.timer.start(1000);self.tick()
+    def stop(self):
+        self.core.focus.stop();self.timer.stop();self.state.setText('READY FOR DEEP WORK');self.clock.setText(f'{self.minutes.value():02d}:00');self.tick()
+    def tick(self):
+        f=self.core.focus.status();self.remaining=f['remaining'];self.total=f['total_seconds'];self.clock.setText(f"{self.remaining//60:02d}:{self.remaining%60:02d}" if f['running'] else f'{self.minutes.value():02d}:00');self.total_label.setText(f"{self.total//60} min");
+        if not f['running'] and self.timer.isActive():self.timer.stop();self.state.setText('SESSION COMPLETE')
+    def save_reflection(self):
+        if self.intent.toPlainText().strip():self.core.memory.add('School','Focus reflection',self.intent.toPlainText().strip(),['focus']);QMessageBox.information(self,'Study Center','Saved to Project Memory.')
+
+
+class WorkflowGraphView(QGraphicsView):
+    def __init__(self):
+       

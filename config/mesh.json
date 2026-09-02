@@ -1,0 +1,12 @@
+{
+  "device_name": "Infinity Desktop",
+  "capabilities": [
+    "windows-control",
+    "browser",
+    "aegis",
+    "files",
+    "system-monitor",
+    "workflows"
+  ],
+  "trusted_only": true
+}

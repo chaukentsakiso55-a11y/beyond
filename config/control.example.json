@@ -1,0 +1,6 @@
+{
+  "remote_port": 8765,
+  "confirm_messages": true,
+  "allow_power_actions": false,
+  "auto_start_remote": false
+}

@@ -1,0 +1,40 @@
+from pathlib import Path
+import json,time
+from PySide6.QtCore import Qt,QTimer,QThreadPool,QUrl
+from PySide6.QtGui import QPixmap,QDesktopServices,QColor,QPen
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QLineEdit,QPlainTextEdit,QTextBrowser,QListWidget,QListWidgetItem,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QFileDialog,QMessageBox,QDialog,QFormLayout,QDialogButtonBox,QCheckBox,QSpinBox,QSplitter,QTabWidget,QColorDialog,QInputDialog,QApplication,QTreeWidget,QTreeWidgetItem,QGraphicsView,QGraphicsScene,QGraphicsRectItem,QGraphicsTextItem,QGraphicsLineItem)
+from ..widgets import Card,SectionHeader,Worker
+from ...security import MODES
+from ...appearance import PRESETS
+from ...paths import DATA,ROOT
+
+class ForgePage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.project=None;self.current_file=None;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Developer Forge 2.0','Project explorer, editor, terminal, Git, tests and architecture-lock protection.'));bar=QHBoxLayout();self.path=QLineEdit();self.path.setPlaceholderText('Choose a project folder');choose=QPushButton('Open Project');choose.clicked.connect(self.choose_project);git=QPushButton('Git Status');git.clicked.connect(lambda:self.run_forge('git'));diff=QPushButton('Git Diff');diff.clicked.connect(lambda:self.run_forge('diff'));test=QPushButton('Run Tests');test.clicked.connect(lambda:self.run_forge('test'));review=QPushButton('AEGIS Review');review.clicked.connect(self.aegis_review);lock=QPushButton('Architecture Locks');lock.clicked.connect(self.edit_locks);bar.addWidget(self.path,1);bar.addWidget(choose);bar.addWidget(git);bar.addWidget(diff);bar.addWidget(test);bar.addWidget(review);bar.addWidget(lock);lay.addLayout(bar);split=QSplitter();self.tree=QTreeWidget();self.tree.setHeaderLabel('Project');self.tree.itemClicked.connect(self.open_tree_item);split.addWidget(self.tree);right=QSplitter(Qt.Vertical);editor=Card();el=QVBoxLayout(editor);self.editor_tabs=QTabWidget();self.editor_tabs.setTabsClosable(True);self.editor_tabs.tabCloseRequested.connect(self.close_editor_tab);save=QPushButton('Save Current File');save.setObjectName('Primary');save.clicked.connect(self.save_file);el.addWidget(self.editor_tabs,1);el.addWidget(save);right.addWidget(editor);term=Card();tl=QVBoxLayout(term);self.terminal=QPlainTextEdit();self.terminal.setReadOnly(True);row=QHBoxLayout();self.command=QLineEdit();self.command.setPlaceholderText('Terminal command');run=QPushButton('Run');run.clicked.connect(self.run_terminal);row.addWidget(self.command,1);row.addWidget(run);tl.addWidget(self.terminal,1);tl.addLayout(row);right.addWidget(term);split.addWidget(right);split.setStretchFactor(1,4);lay.addWidget(split,1)
+    def choose_project(self):
+        p=QFileDialog.getExistingDirectory(self,'Open project');
+        if p:self.project=Path(p);self.path.setText(p);self.load_tree()
+    def load_tree(self):
+        self.tree.clear();
+        if not self.project:return
+        root=QTreeWidgetItem([self.project.name]);root.setData(0,Qt.UserRole,str(self.project));root.setData(0,Qt.UserRole+1,True);self.tree.addTopLevelItem(root);nodes={'':root}
+        for item in self.core.forge.tree(self.project):
+            rel=item['path'];parent=str(Path(rel).parent).replace('\\','/');parent='' if parent=='.' else parent;par=nodes.get(parent,root);node=QTreeWidgetItem([Path(rel).name]);node.setData(0,Qt.UserRole,str(self.project/rel));node.setData(0,Qt.UserRole+1,item['dir']);par.addChild(node)
+            if item['dir']:nodes[rel.replace('\\','/')]=node
+        root.setExpanded(True)
+    def open_tree_item(self,item):
+        if item.data(0,Qt.UserRole+1):return
+        p=Path(item.data(0,Qt.UserRole));
+        if p.stat().st_size>2*1024*1024:return
+        self.current_file=p
+        for i in range(self.editor_tabs.count()):
+            if self.editor_tabs.widget(i).property('file_path')==str(p):self.editor_tabs.setCurrentIndex(i);return
+        editor=QPlainTextEdit();editor.setLineWrapMode(QPlainTextEdit.NoWrap);editor.setPlainText(self.core.forge.read(p));editor.setProperty('file_path',str(p));idx=self.editor_tabs.addTab(editor,p.name);self.editor_tabs.setTabToolTip(idx,str(p));self.editor_tabs.setCurrentIndex(idx)
+    def save_file(self):
+        editor=self.editor_tabs.currentWidget()
+        if not editor:return
+        current=Path(editor.property('file_path'))
+        if self.core.security.decision('files.write')=='deny':QMessageBox.warning(self,'Forge','files.write is denied.');return
+        if self.core.security.decision('files.write')=='ask' and QMessageBox.question(self,'Permission','Allow Forge to write this file?')!=QMessageBox.Yes:return
+        try:self.core.forge.write(self.project,current,editor.toPlainText());self.core.security.audit('forge.write',{'file':str(current)});QMessageBox.information(self,'Forge','Saved.')
+        except Exception 

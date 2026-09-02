@@ -1,0 +1,24 @@
+{
+  "routing": {
+    "default_provider": "Local",
+    "privacy_provider": "Local",
+    "coding_provider": "Local"
+  },
+  "providers": [
+    {
+      "id": "local-default",
+      "name": "Local",
+      "type": "openai-compatible",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "api_key": "",
+      "models": [
+        "local-model"
+      ],
+      "model": "local-model",
+      "enabled": true,
+      "priority": 50,
+      "cost_input_per_million": 0,
+      "cost_output_per_million": 0
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+f.core.agent.execute,plan,1,perms);worker.signals.result.connect(lambda r:self.agent_done(plan,r));self.pool.start(worker)
+    def agent_done(self,plan,results):self.core.chats.add(self.chat_id,'user',plan.request);self.core.chats.add(self.chat_id,'assistant','\n'.join(x.get('message','') for x in results),'AEGIS Agent','');self.render()
+    def voice_input(self):
+        worker=Worker(self.core.voice.listen_once);worker.signals.result.connect(lambda r:self.input.setPlainText(r[1]) if r[0] else QMessageBox.information(self,'Voice',r[1]));self.pool.start(worker)
+    def speak_last(self):
+        c=self.core.chats.chats.get(self.chat_id,{});last=next((m for m in reversed(c.get('messages',[])) if m.get('role')=='assistant'),None)
+        if last:self.core.voice.speak(last.get('content',''))
+
+class ProviderDialog(QDialog):
+    def __init__(self,parent=None,data=None):
+        super().__init__(parent)
+        self.router=getattr(getattr(parent,'core',None),'router',None)
+        self.original=data or {}
+        self.setWindowTitle('AI Provider')
+        self.resize(560,360)
+        form=QFormLayout(self)
+
+        intro=QLabel('Simple setup: enter a display name and API key. Infinity will identify known providers, configure the endpoint, and discover models automatically.')
+        intro.setWordWrap(True);intro.setStyleSheet('color:#7896aa')
+        form.addRow(intro)
+
+        self.name=QLineEdit();self.name.setPlaceholderText('Any nickname, e.g. School AI, AEGIS Cloud, My Gemini')
+        self.key=QLineEdit();self.key.setEchoMode(QLineEdit.Password);self.key.setPlaceholderText('Paste API key')
+        self.detected=QLabel('Waiting for provider details…');self.detected.setWordWrap(True);self.detected.setStyleSheet('color:#46e6ff')
+        self.provider_hint=QComboBox();self.provider_hint.addItem('Choose only if auto-detect cannot identify the key','')
+        if self.router:
+            for pid,profile in self.router.PROVIDER_PROFILES.items() if hasattr(self.router,'PROVIDER_PROFILES') else []:self.provider_hint.addItem(profile.get('label',pid),pid)
+        # Router profiles live at module level; populate a stable compact fallback list here.
+        if self.provider_hint.count()==1:
+            for label,pid in [('Google Gemini / AI Studio','gemini'),('OpenAI','openai'),('Anthropic Claude','anthropic'),('OpenRouter','openrouter'),('Groq','groq'),('Mistral AI','mistral'),('xAI Grok','xai'),('DeepSeek','deepseek')]:self.provider_hint.addItem(label,pid)
+        self.provider_hint.setVisible(False);self.provider_hint.currentIndexChanged.connect(self.update_detection)
+        form.addRow('Display name',self.name);form.addRow('API key',self.key);form.addRow('',self.detected);form.addRow('Provider',self.provider_hint)
+
+        self.advanced_toggle=QPushButton('▸ Advanced settings');self.advanced_toggle.setCheckable(True);self.advanced_toggle.toggled.connect(self.toggle_advanced);form.addRow(self.advanced_toggle)
+        self.advanced_box=QWidget();advanced=QFormLayout(self.advanced_box);advanced.setContentsMargins(0,0,0,0)
+        self.template=QComboBox();self.template.addItems(['Custom Cloud / OpenAI-Compatible','Ollama Local','LM Studio Local']);self.template.currentTextChanged.connect(self.apply_template)
+        self.endpoint=QLineEdit();self.endpoint.setPlaceholderText('https://provider.example/v1')
+        self.models=QPlainTextEdit();self.models.setPlaceholderText('Optional — one model ID per line. Leave blank for auto-discovery.');self.models.setMaximumHeight(100)
+        self.priority=QSpinBox();self.priority.setRange(0,100);self.priority.setValue(50)
+        self.cost_in=QDoubleSpinBox();self.cost_in.setRange(0,1000);self.cost_in.setDecimals(4);self.cost_in.setSuffix(' / 1M input tokens')
+        self.cost_out=QDoubleSpinBox();self.cost_out.setRange(0,1000);self.cost_out.setDecimals(4);self.cost_out.setSuffix(' / 1M output tokens')
+        self.enabled=QCheckBox('Enabled');self.enabled.setChecked(True)
+        advanced.addRow('Template',self.template);advanced.addRow('API base URL',self.endpoint);advanced.addRow('Models',self.models);advanced.addRow('Priority',self.priority);advanced.addRow('Estimated input cost',self.cost_in);advanced.addRow('Estimated output cost',self.cost_out);advanced.addRow('',self.enabled)
+        form.addRow(self.advanced_box);self.advanced_box.setVisible(False)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);form.addRow(buttons)
+        self.name.textChanged.connect(self.update_detection);self.key.textChanged.connect(self.update_detection)
+
+        if data:
+            self.name.setText(data.get('name',''));self.endpoint.setText(data.get('base_url',''));self.key.setText(data.get('api_key',''));self.models.setPlainText('\n'.join(data.get('models') or []));self.priority.setValue(int(data.get('priority',50)));self.cost_in.setValue(float(data.get('cost_input_per_million',0) or 0))

@@ -1,0 +1,42 @@
+# Infinity OS V7 REBORN — complete Python runtime requirements
+# Install everything with:
+#   python -m pip install -r requirements.txt
+#
+# Playwright's Python package is installed here. To download its Chromium
+# browser runtime, run INSTALL-BROWSER.bat once after installation.
+
+# Native desktop UI
+PySide6>=6.7
+
+# System telemetry
+psutil>=5.9
+
+# Windows / desktop automation
+pyautogui>=0.9.54
+pywinauto>=0.6.8
+pyperclip>=1.9.0
+pywin32>=306; platform_system == "Windows"
+comtypes>=1.4.0; platform_system == "Windows"
+
+# Browser Agent
+playwright>=1.45
+
+# Phone companion / QR / images
+qrcode[pil]>=7.4
+Pillow>=10.0
+
+# PDF and DOCX attachment / memory extraction
+pypdf>=4.0
+python-docx>=1.1
+
+# Voice input / output
+SpeechRecognition>=3.10
+pyttsx3>=2.90
+sounddevice>=0.5.0
+numpy>=2.0
+
+# PyAudio is intentionally NOT required. Infinity can use it when already
+# installed, but voice input falls back to sounddevice + NumPy on Windows.
+
+# QA / bundled test suite
+pytest>=8.0

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+config/providers.json
+config/secrets.json
+config/appearance.json
+config/control.json
+native/bin/
+*.dll
+*.pdb

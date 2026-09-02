@@ -1,0 +1,7 @@
+ enumerate([p['pid'],p['name'],f"{p['cpu']:.1f}%",f"{p['memory']:.1f}%"]):self.proc.setItem(r,c,QTableWidgetItem(str(v)))
+    def run_diag(self):
+        r=self.core.diagnostics.run();missing=[x['name'] for x in r['checks'] if not x['ok']];self.diag_label.setText('All dependencies available' if not missing else 'Missing: '+', '.join(missing))
+    def safe_mode(self):
+        if self.core.diagnostics.safe_mode():self.core.diagnostics.disable_safe_mode()
+        else:self.core.diagnostics.enable_safe_mode()
+        self.run_diag()

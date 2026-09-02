@@ -1,0 +1,28 @@
+from pathlib import Path
+import json, time
+from PySide6.QtCore import Qt, QTimer, QThreadPool, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QLineEdit,QPlainTextEdit,QTextBrowser,QListWidget,QListWidgetItem,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QFileDialog,QMessageBox,QDialog,QFormLayout,QDialogButtonBox,QCheckBox,QSpinBox,QDoubleSpinBox,QSplitter,QProgressBar)
+from ..widgets import Card,StatCard,SectionHeader,Sparkline,Worker
+
+class DashboardPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Command Center','A native overview of Infinity Core, AEGIS, AI routing, device control and your system.'))
+        hero=Card();hl=QHBoxLayout(hero);left=QVBoxLayout();ey=QLabel('INFINITY CORE / ADAPTIVE RUNTIME');ey.setStyleSheet('color:#46e6ff;font-size:10px;font-weight:800');title=QLabel('Limitless intelligence. Unified.');title.setStyleSheet('font-size:28px;font-weight:900');sub=QLabel('Build, learn, automate, control and coordinate your devices from one local-first system.');sub.setWordWrap(True);sub.setStyleSheet('color:#7896aa');left.addWidget(ey);left.addWidget(title);left.addWidget(sub);hl.addLayout(left,1);logo=QLabel('∞');logo.setAlignment(Qt.AlignCenter);logo.setStyleSheet('font-size:78px;color:#46e6ff;font-weight:900');hl.addWidget(logo);lay.addWidget(hero)
+        grid=QGridLayout();self.stats={}
+        for i,(k,t,s) in enumerate([('cpu','CPU','processor load'),('ram','Memory','system RAM'),('disk','Storage','drive usage'),('battery','Battery','power level')]):self.stats[k]=StatCard(t,'--',s);grid.addWidget(self.stats[k],0,i)
+        lay.addLayout(grid);lower=QGridLayout();a=Card();al=QVBoxLayout(a);al.addWidget(QLabel('CPU ACTIVITY'));self.spark=Sparkline();al.addWidget(self.spark);self.activity=QLabel('Infinity Core online');self.activity.setStyleSheet('color:#7896aa');al.addWidget(self.activity);lower.addWidget(a,0,0);q=Card();ql=QVBoxLayout(q);ql.addWidget(QLabel('QUICK LAUNCH'))
+        for text,target in [('✦ AEGIS Live','AEGIS'),('⌘ Developer Forge','Forge'),('◎ AI Nexus','AI Nexus'),('⌁ Control Center','Control')]:
+            b=QPushButton(text);b.clicked.connect(lambda _,n=target:self.window().open_page(n));ql.addWidget(b)
+        lower.addWidget(q,0,1);lower.setColumnStretch(0,2);lower.setColumnStretch(1,1);lay.addLayout(lower);lay.addStretch()
+        self.timer=QTimer(self);self.timer.timeout.connect(lambda:self.update_stats(self.core.system.latest or self.core.system.snapshot()));self.timer.start(2000);self.update_stats(self.core.system.snapshot())
+    def update_stats(self,d):
+        vals={'cpu':f"{d.get('cpu',0):.0f}%",'ram':f"{d.get('ram',0):.0f}%",'disk':f"{d.get('disk',0):.0f}%",'battery':'N/A' if d.get('battery') is None else f"{d.get('battery',0):.0f}%"}
+        for k,v in vals.items():self.stats[k].value.setText(v)
+        self.spark.add(d.get('cpu',0));self.activity.setText(f"{d.get('host','')} · Python {d.get('python','')} · {self.core.notifications.unread_count()} unread notifications")
+
+class AegisPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();self.chat_id=core.chats.latest();self.pending=[];outer=QVBoxLayout(self);outer.addWidget(SectionHeader('AEGIS Live','Persistent multi-chat AI, file upload, Project Memory context and permission-gated Agent Mode.'))
+        split=QSplitter();outer.addWidget(split,1);left=Card();ll=QVBoxLayout(left);new=QPushButton('+ New Chat');new.setObjectName('Primary');new.clicked.connect(self.new_chat);ll.addWidget(new);self.search=QLineEdit();self.search.setPlaceholderText('Search chats');self.search.textChanged.connect(self.refresh_chats);ll.addWidget(self.search);self.chats=QListWidget();self.chats.itemSelectionChanged.connect(self.select_chat);ll.addWidget(self.chats,1);split.addWidget(left)
+        center=Card();cl=QVBoxLayout(center);toolbar=QHBoxLayout();self.provider=QComboBox();self.model=QComboBox();self.provider.currentTextChanged.connect(self.provider_changed);self.mode=QComboBox();self.mode.addItems(['Answer','Agent']);toolbar.addWidget(QLabel('Provider'));toolbar.addWidget(self.provider);toolbar.addWidget(self.model);toolbar.addStretch();toolbar.addWidget(self.mode);cl.addLayout(toolbar);self.transcript=QTextBrowser();cl.addWidget(self.transcript,1);self.attach_label=QLabel('No attachments');self.attach_label.setStyleSheet('color:#7896aa');cl.addWidget(self.attach_label);self.input=QPlainTextEdit();self.input.setPlaceholderText('Ask AEGIS, attach files, or describe a task for Agent Mode…');self.input.setMaximumHeight(115);cl.addWidget(self.input);actions=QHBoxLayout();attach=QPushButton('＋ File');attach.clicked.connect(self.attach_files);voice=QPushButton('🎙 Voice');voice.clicked.connect(self.voice_input);speak=QPushButton('🔊 Speak last');speak.clicked.connect(s

@@ -1,0 +1,58 @@
+;self.cost_out.setValue(float(data.get('cost_output_per_million',0) or 0));self.enabled.setChecked(data.get('enabled',True))
+            # Local/custom providers need the advanced controls visible when editing.
+            known=self.router.detect_provider(data.get('name',''),data.get('api_key','')) if self.router else ''
+            if data.get('base_url') and (not known or data.get('base_url','').startswith(('http://127.0.0.1','http://localhost'))):self.advanced_toggle.setChecked(True)
+        self.update_detection()
+
+    def toggle_advanced(self,checked):
+        self.advanced_box.setVisible(checked);self.advanced_toggle.setText(('▾' if checked else '▸')+' Advanced settings');self.adjustSize()
+
+    def apply_template(self,name):
+        if name=='Ollama Local':self.name.setText('Ollama Local');self.endpoint.setText('http://127.0.0.1:11434/v1');self.key.clear()
+        elif name=='LM Studio Local':self.name.setText('LM Studio Local');self.endpoint.setText('http://127.0.0.1:1234/v1');self.key.clear()
+
+    def update_detection(self):
+        if not self.router:return
+        hint=self.provider_hint.currentData() or ''
+        provider_id=self.router.detect_provider(self.name.text(),self.key.text(),hint)
+        profile=self.router.provider_profile({'provider_kind':provider_id})[1] if provider_id else None
+        if profile:
+            self.detected.setText(f"✓ Detected {profile['label']} · your display name can be anything")
+            self.provider_hint.setVisible(False)
+        elif self.key.text().strip():
+            self.detected.setText('I cannot safely identify this key by format alone. Choose who issued it below; Infinity will never send your key to other providers just to guess.')
+            self.provider_hint.setVisible(True)
+        elif self.name.text().strip():
+            self.detected.setText('Display name is only a nickname. Paste the API key and Infinity will try to identify its provider locally.')
+            self.provider_hint.setVisible(False)
+        else:
+            self.detected.setText('Waiting for provider details…');self.provider_hint.setVisible(False)
+
+    def accept(self):
+        name=self.name.text().strip();key=self.key.text().strip();advanced=self.advanced_toggle.isChecked()
+        if not name:
+            QMessageBox.warning(self,'AI Provider','Enter a display name.');return
+        if not advanced and not key:
+            QMessageBox.warning(self,'AI Provider','Enter the API key.');return
+        candidate=self.data()
+        if self.router:
+            ok,msg=self.router.validate_provider(candidate)
+            if not ok:
+                QMessageBox.warning(self,'AI Provider',msg);return
+        super().accept()
+
+    def data(self):
+        models=[x.strip() for x in self.models.toPlainText().splitlines() if x.strip()]
+        advanced=self.advanced_toggle.isChecked()
+        result={'name':self.name.text().strip(),'type':'openai-compatible','base_url':self.endpoint.text().strip().rstrip('/') if advanced else '','api_key':self.key.text().strip(),'models':models if advanced else [],'model':models[0] if advanced and models else '','priority':self.priority.value(),'cost_input_per_million':self.cost_in.value(),'cost_output_per_million':self.cost_out.value(),'enabled':self.enabled.isChecked(),'simple_setup':not advanced}
+        if self.router:
+            hint=self.provider_hint.currentData() or ''
+            detected=self.router.detect_provider(result['name'],result['api_key'],hint)
+            if detected:result['provider_kind']=detected
+            self.router.autofill_provider(result)
+        return result
+
+class AiNexusPage(QWidget):
+    providers_changed=Signal()
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('AI Nexus 2.0','Unlimited providers, multiple models, health checks, latency-aware failover, routing policies and Model Arena.'));buttons=QHBoxLayout();add=QPushButton('+ Add API');add.setObjectName('Primary');add.clicked.connect(self.add_provider);edit=QPushButton('Edit');edit.clicked.connect(self.edit_provider);duplicate=QPushButton('Duplicate');duplicate.clicked.connect(self.duplicate_provider);delete=QPushButton('Delete');delete.setObjectName('Danger');delete.clicked.connect(self.delete_provider);health=QPushButton('Health Check');health.clicked.connect(self.health_check);buttons.addWidget(add);buttons.addWidget(edit);buttons.addWidget(duplicate);buttons.addWidget(delete);buttons.addWidget(health);buttons.addStretch();lay.addLayout(buttons);self.table=QTableWidget(0,7);self.table.setHorizontalHeaderLabels(['Provider','Models','Endpoint','Priority','Health','Est. Cost','Enabled']);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);lay.addWidget(self.table,1);route=Card();rl=QHBoxLayout(route);self.default=QComboBox();self.private=QComboBox();self.coding=QComboBox();save=QPushButton('Save routing');save.clicked.connect(self.s

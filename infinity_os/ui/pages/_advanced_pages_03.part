@@ -1,0 +1,26 @@
+t__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Control Center','AEGIS desktop control, Windows UI Automation and phone pairing. The desktop itself remains native.'));command=Card();cl=QVBoxLayout(command);cl.addWidget(QLabel('NATURAL-LANGUAGE LAPTOP COMMAND'));self.cmd=QPlainTextEdit();self.cmd.setMaximumHeight(90);self.cmd.setPlaceholderText('Open Chrome, search for Android Studio documentation, then open VS Code');run=QPushButton('Plan & Execute');run.setObjectName('Primary');run.clicked.connect(self.execute);self.out=QPlainTextEdit();self.out.setReadOnly(True);self.out.setMaximumHeight(130);cl.addWidget(self.cmd);cl.addWidget(run);cl.addWidget(self.out);lay.addWidget(command);grid=QGridLayout();phone=Card();pl=QVBoxLayout(phone);pl.addWidget(QLabel('PHONE COMPANION'));self.remote_state=QLabel('Offline');self.pin=QLabel(self.core.pairing.pin);self.pin.setStyleSheet('font-size:28px;font-weight:900;color:#46e6ff');self.url=QLabel('');self.url.setTextInteractionFlags(Qt.TextSelectableByMouse);buttons=QHBoxLayout();start=QPushButton('Start Remote');start.clicked.connect(self.start_remote);qr=QPushButton('Show QR');qr.clicked.connect(self.show_qr);newpin=QPushButton('New PIN');newpin.clicked.connect(self.new_pin);buttons.addWidget(start);buttons.addWidget(qr);buttons.addWidget(newpin);pl.addWidget(self.remote_state);pl.addWidget(QLabel('Pairing PIN'));pl.addWidget(self.pin);pl.addWidget(self.url);pl.addLayout(buttons);grid.addWidget(phone,0,0);windows=Card();wl=QVBoxLayout(windows);wl.addWidget(QLabel('WINDOWS UI AUTOMATION'));self.winlist=QListWidget();refresh=QPushButton('Refresh windows');refresh.clicked.connect(self.refresh_windows);wl.addWidget(self.winlist);wl.addWidget(refresh);grid.addWidget(windows,0,1);lay.addLayout(grid);lay.addStretch()
+    def execute(self):
+        text=self.cmd.toPlainText().strip();
+        if not text:return
+        self.out.setPlainText('Planning…');w=Worker(self.core.agent.plan,text);w.signals.result.connect(self.planned);self.pool.start(w)
+    def planned(self,plan):
+        perms={self.core.tools.get(s.tool).permission for s in plan.steps if self.core.tools.get(s.tool) and self.core.tools.get(s.tool).permission and self.core.security.decision(self.core.tools.get(s.tool).permission)=='ask'};details='\n'.join(f'{i+1}. {s.title} [{s.tool}]' for i,s in enumerate(plan.steps));self.out.setPlainText(details)
+        if QMessageBox.question(self,'Execute AEGIS Plan',details+('\n\nPermissions: '+', '.join(sorted(perms)) if perms else '')+'\n\nExecute?')!=QMessageBox.Yes:return
+        w=Worker(self.core.agent.execute,plan,1,perms);w.signals.result.connect(lambda r:self.out.setPlainText('\n'.join(x.get('message','') for x in r)));self.pool.start(w)
+    def start_remote(self):
+        try:u=self.core.remote.start();self.remote_state.setText('Online');self.url.setText(u);self.core.notifications.push('Phone remote online',u,'success','Control Center')
+        except Exception as exc:QMessageBox.critical(self,'Phone Remote',str(exc))
+    def new_pin(self):self.pin.setText(self.core.pairing.new_pin())
+    def show_qr(self):
+        self.start_remote();url=self.core.remote.url()+f'/pair?pin={self.core.pairing.pin}&name=My%20phone'
+        try:
+            import qrcode
+            path=DATA/'phone_pair_qr.png';qrcode.make(url).save(path);d=QDialog(self);d.setWindowTitle('Scan with your phone');vl=QVBoxLayout(d);img=QLabel();pix=QPixmap(str(path)).scaled(320,320,Qt.KeepAspectRatio,Qt.SmoothTransformation);img.setPixmap(pix);img.setAlignment(Qt.AlignCenter);vl.addWidget(img);label=QLabel(url);label.setWordWrap(True);label.setTextInteractionFlags(Qt.TextSelectableByMouse);vl.addWidget(label);d.resize(390,430);d.exec()
+        except Exception as exc:QMessageBox.information(self,'Pair Phone',url+'\n\n'+str(exc))
+    def refresh_windows(self):
+        self.winlist.clear();
+        for w in self.core.windows.windows():self.winlist.addItem(w['title'])
+
+class PluginsPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Plugins & MCP','Extend Infinity through capability manifests and permission-gated external tool servers.'));tabs=QTabWidget();lay.addWidget(tabs,1);plugins=QWidget();pl=QVBoxLayout(plugins);bar=QHBoxLayout();scan=QPushButton('Rescan');scan.clicked.connect(self.refresh);load=QPushButton('Load Selected');load.clicked.connect(self.load_selected);bar.addWidget(scan);bar.addWidget(load);bar.addStretch();pl.addLayout(bar);self.list=QListWidget();pl.addWidget(self.list);tabs.addTab(plugins,'Plugins');mcp=QWidget();ml=QVBoxLayout(mcp);self.mcp=QTableWidget(0,3);self.mcp.setHorizontalHeaderLabels(['Name','Command','Status']);self.mcp.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);mb=QHBoxLayout();add=QPushButton('+ MCP Server');add.clicked.connect(self.add_mcp);start=QPushButton('Start Selected');start.clicked.connect(self.start_mcp

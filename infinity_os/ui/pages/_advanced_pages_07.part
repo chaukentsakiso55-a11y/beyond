@@ -1,0 +1,46 @@
+luetooth);w.signals.result.connect(self.show_discovery);w.signals.error.connect(lambda e:self.scan_status.setText('Bluetooth failed: '+e));self.pool.start(w)
+
+    def show_discovery(self,result):
+        devices=(getattr(result,'data',{}) or {}).get('devices',[]);self.scan_status.setText(getattr(result,'message','Discovery complete'))
+        self.discovery_table.setRowCount(len(devices))
+        for r,d in enumerate(devices):
+            vals=[d.get('type',''),d.get('name',''),d.get('ip',''),d.get('mac',''),d.get('interface',''),d.get('state',''),d.get('source','')]
+            for c,v in enumerate(vals):self.discovery_table.setItem(r,c,QTableWidgetItem(str(v)))
+        if not getattr(result,'ok',True):QMessageBox.warning(self,'Device Discovery',getattr(result,'message','Discovery failed.'))
+
+    def clear_discovery(self):
+        self.discovery_table.setRowCount(0);self.scan_status.setText('Ready')
+
+    def refresh(self):
+        self.core.mesh.load();rows=list(self.core.mesh.devices.values());self.table.setRowCount(len(rows))
+        for r,d in enumerate(rows):
+            vals=[d.get('name',''),d.get('platform',''),', '.join(d.get('capabilities',[])),'Yes' if d.get('trusted') else 'No','Yes' if d.get('online') else 'No',time.strftime('%m-%d %H:%M',time.localtime(d.get('last_seen',0)))]
+            for c,v in enumerate(vals):self.table.setItem(r,c,QTableWidgetItem(v))
+    def choose(self):
+        req=[x.strip() for x in self.need.text().split(',') if x.strip()];d=self.core.mesh.choose(req);self.result.setText('No capable device' if not d else 'Selected: '+d.get('name',''))
+
+class BrowserPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Browser Agent','A dedicated Playwright agent for navigation, reading pages, clicking visible text and filling forms.'));bar=QHBoxLayout();self.url=QLineEdit();self.url.setPlaceholderText('https://…');go=QPushButton('Navigate');go.setObjectName('Primary');go.clicked.connect(self.navigate);read=QPushButton('Read Page');read.clicked.connect(self.read_page);shot=QPushButton('Screenshot');shot.clicked.connect(self.screenshot);bar.addWidget(self.url,1);bar.addWidget(go);bar.addWidget(read);bar.addWidget(shot);lay.addLayout(bar);actions=Card();al=QHBoxLayout(actions);self.click_text=QLineEdit();self.click_text.setPlaceholderText('Visible text to click');click=QPushButton('Click Text');click.clicked.connect(self.click);self.field=QLineEdit();self.field.setPlaceholderText('Field label or selector');self.value=QLineEdit();self.value.setPlaceholderText('Value');fill=QPushButton('Fill');fill.clicked.connect(self.fill);al.addWidget(self.click_text);al.addWidget(click);al.addWidget(self.field);al.addWidget(self.value);al.addWidget(fill);lay.addWidget(actions);self.out=QTextBrowser();lay.addWidget(self.out,1)
+    def allow(self,permission):
+        d=self.core.security.decision(permission)
+        if d=='allow':return True
+        if d=='deny':QMessageBox.warning(self,'Browser Agent',permission+' is denied by Security Center.');return False
+        if QMessageBox.question(self,'Permission',f'Allow {permission} for this Infinity session?')==QMessageBox.Yes:self.core.security.grant_session(permission);return True
+        return False
+    def navigate(self):
+        if not self.allow('browser.navigate'):return
+        u=self.url.text().strip();
+        if not u:return
+        w=Worker(self.core.browser.navigate,u);w.signals.result.connect(self.show);self.pool.start(w)
+    def read_page(self):
+        w=Worker(self.core.browser.text);w.signals.result.connect(lambda r:self.out.setPlainText(r.data.get('text','') if r.ok else r.message));self.pool.start(w)
+    def click(self):
+        if not self.allow('browser.form_submit'):return
+        w=Worker(self.core.browser.click_text,self.click_text.text());w.signals.result.connect(self.show);self.pool.start(w)
+    def fill(self):
+        if not self.allow('browser.form_submit'):return
+        w=Worker(self.core.browser.fill,self.field.text(),self.value.text());w.signals.result.connect(self.show);self.pool.start(w)
+    def screenshot(self):
+        path=DATA/f'browser_{int(time.time())}.png';w=Worker(self.core.browser.screenshot,path);w.signals.result.connect(self.show);self.pool.start(w)
+    def show(self,r):self.out.setPlainText(r.message+'\n\n'+json.dumps(r.data,indent=2) if getattr(r,'data',None) else r.message)

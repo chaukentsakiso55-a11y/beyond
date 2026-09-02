@@ -1,0 +1,20 @@
+# Infinity OS optional/full feature dependencies.
+# requirements.txt is the authoritative complete list; this file is retained
+# for the launcher's staged installation and excludes the two core packages.
+pyautogui>=0.9.54
+pywinauto>=0.6.8
+pyperclip>=1.9.0
+pywin32>=306; platform_system == "Windows"
+comtypes>=1.4.0; platform_system == "Windows"
+playwright>=1.45
+qrcode[pil]>=7.4
+Pillow>=10.0
+pypdf>=4.0
+python-docx>=1.1
+SpeechRecognition>=3.10
+pyttsx3>=2.90
+sounddevice>=0.5.0
+numpy>=2.0
+
+# QA / bundled test suite
+pytest>=8.0

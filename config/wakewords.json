@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "wakewords": [
+    "hey aegis",
+    "hey infinity",
+    "hey wolf"
+  ],
+  "listen_seconds": 8
+}

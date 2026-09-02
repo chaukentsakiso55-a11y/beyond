@@ -1,0 +1,45 @@
+ave_routing);rl.addWidget(QLabel('Default'));rl.addWidget(self.default);rl.addWidget(QLabel('Private'));rl.addWidget(self.private);rl.addWidget(QLabel('Coding'));rl.addWidget(self.coding);rl.addWidget(save);lay.addWidget(route);arena=Card();al=QVBoxLayout(arena);al.addWidget(QLabel('MODEL ARENA'));self.prompt=QPlainTextEdit();self.prompt.setPlaceholderText('Send the same prompt to enabled providers and compare responses');self.prompt.setMaximumHeight(85);run=QPushButton('Run Arena');run.setObjectName('Primary');run.clicked.connect(self.run_arena);feedback=QHBoxLayout();self.arena_winner=QComboBox();winner=QPushButton('Mark Best Answer');winner.clicked.connect(self.mark_winner);feedback.addWidget(QLabel('Arena feedback'));feedback.addWidget(self.arena_winner);feedback.addWidget(winner);feedback.addStretch();self.arena_out=QTextBrowser();al.addWidget(self.prompt);al.addWidget(run);al.addLayout(feedback);al.addWidget(self.arena_out);lay.addWidget(arena,1);self.refresh()
+    def refresh(self):
+        ps=self.core.router.providers();self.table.setRowCount(len(ps));names=[p.get('name','') for p in ps]
+        for row,p in enumerate(ps):
+            h=self.core.router.health(p.get('name',''));vals=[p.get('name',''),', '.join(p.get('models') or []) or 'Auto-detect',p.get('base_url','') or 'Auto-configure',str(p.get('priority',50)),f"{h['success_rate']*100:.0f}% · {h['avg_latency']:.2f}s" if h['calls'] else 'Untested',f"${self.core.router.cost_estimate(p.get('name','')):.4f}",'Yes' if p.get('enabled',True) else 'No']
+            for c,v in enumerate(vals):self.table.setItem(row,c,QTableWidgetItem(v))
+            self.table.item(row,0).setData(Qt.UserRole,p.get('id'))
+        routing=self.core.router.config.get('routing',{})
+        for combo,key in [(self.default,'default_provider'),(self.private,'privacy_provider'),(self.coding,'coding_provider')]:combo.clear();combo.addItems(['']+names);combo.setCurrentText(routing.get(key,''))
+        self.providers_changed.emit()
+    def selected(self):
+        row=self.table.currentRow();return None if row<0 else next((p for p in self.core.router.providers() if p.get('id')==self.table.item(row,0).data(Qt.UserRole)),None)
+    def add_provider(self):
+        d=ProviderDialog(self)
+        if d.exec() and d.data()['name']:
+            import uuid;p=d.data();p['id']=str(uuid.uuid4());self.core.router.autofill_provider(p);self.core.router.config['providers'].append(p)
+            # Make the first real cloud provider useful immediately. A fresh Infinity
+            # install otherwise keeps routing to the placeholder Local endpoint.
+            is_cloud=not p.get('local') and not p.get('base_url','').startswith(('http://127.0.0.1','http://localhost'))
+            routing=self.core.router.config.setdefault('routing',{})
+            cloud_names=[x.get('name','') for x in self.core.router.config['providers'] if x.get('enabled',True) and not x.get('local') and not x.get('base_url','').startswith(('http://127.0.0.1','http://localhost'))]
+            if is_cloud and routing.get('default_provider','') in ('','Local') and len(cloud_names)==1:routing['default_provider']=p.get('name','')
+            self.core.router.save();self.core.router.reload();self.refresh()
+    def edit_provider(self):
+        p=self.selected();
+        if not p:return
+        d=ProviderDialog(self,p)
+        if d.exec():
+            keep=p['id'];p.clear();p.update(d.data());p['id']=keep;self.core.router.autofill_provider(p);self.core.router.save();self.core.router.reload();self.refresh()
+    def duplicate_provider(self):
+        p=self.selected();
+        if not p:return
+        import uuid,copy;new=copy.deepcopy(p);new['id']=str(uuid.uuid4());new['name']=new.get('name','Provider')+' Copy';self.core.router.config['providers'].append(new);self.core.router.save();self.core.router.reload();self.refresh()
+    def delete_provider(self):
+        p=self.selected();
+        if p and QMessageBox.question(self,'Delete API',f"Delete {p.get('name')}?")==QMessageBox.Yes:self.core.router.config['providers']=[x for x in self.core.router.providers() if x.get('id')!=p.get('id')];self.core.router.save();self.core.router.reload();self.refresh()
+    def save_routing(self):self.core.router.config['routing']={'default_provider':self.default.currentText(),'privacy_provider':self.private.currentText(),'coding_provider':self.coding.currentText()};self.core.router.save();QMessageBox.information(self,'AI Nexus','Routing saved.')
+    def health_check(self):
+        p=self.selected();
+        if not p:return
+        worker=Worker(self.core.router.check_provider,p);worker.signals.result.connect(lambda r:(QMessageBox.information(self,'Provider Health',r['message']+f"\nLatency: {r['latency']:.2f}s"),self.refresh()));self.pool.start(worker)
+    def run_arena(self):
+        q=self.prompt.toPlainText().strip();
+        if not q:return
+        self.arena_out.setText('Running providers…');worker=Worker(self.core.router.arena,q);worker.signals.result.conne

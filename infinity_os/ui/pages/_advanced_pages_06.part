@@ -1,0 +1,43 @@
+date_repo.text().strip();(ROOT/'config'/'update.json').write_text(json.dumps({'github_repo':repo},indent=2),encoding='utf-8');self.core.updater.repo=repo;self.update_out.setPlainText('Update repository saved: '+repo)
+    def check_update(self):
+        self.update_out.setPlainText('Checking…');worker=Worker(self.core.updater.check);worker.signals.result.connect(lambda r:self.update_out.setPlainText(json.dumps(r,indent=2)));worker.signals.error.connect(lambda e:self.update_out.setPlainText('Update check failed: '+e));self.pool.start(worker)
+    def backup(self):self.update_out.setPlainText('Backup created: '+self.core.updater.backup())
+    def rollback(self):
+        path=self.core.updater.latest_backup()
+        if not path:self.update_out.setPlainText('No Infinity backup exists yet.');return
+        if QMessageBox.question(self,'Rollback Infinity',f'Restore the latest backup?\n\n{path}\n\nInfinity should be restarted afterward.')==QMessageBox.Yes:self.core.updater.rollback(path);self.update_out.setPlainText('Rollback restored: '+path+'\nRestart Infinity OS.')
+    def safe(self):
+        if self.core.diagnostics.safe_mode():self.core.diagnostics.disable_safe_mode()
+        else:self.core.diagnostics.enable_safe_mode()
+        self.update_out.setPlainText('Safe Mode: '+str(self.core.diagnostics.safe_mode()))
+
+class MeshPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self)
+        lay.addWidget(SectionHeader('Infinity Device Mesh','Registry plus safe local discovery for devices on your private LAN and present/known Bluetooth devices. Discovery does not scan ports or test credentials.'))
+
+        discover=Card();dl=QVBoxLayout(discover);title=QLabel('NEARBY DEVICE DISCOVERY');title.setStyleSheet('font-weight:800;color:#46e6ff');dl.addWidget(title)
+        row=QHBoxLayout();lan=QPushButton('Scan Same Network');lan.setObjectName('Primary');lan.clicked.connect(self.scan_lan);bt=QPushButton('Nearby Bluetooth');bt.clicked.connect(self.scan_bluetooth);clear=QPushButton('Clear Results');clear.clicked.connect(self.clear_discovery);self.scan_status=QLabel('Ready');self.scan_status.setStyleSheet('color:#7896aa');row.addWidget(lan);row.addWidget(bt);row.addWidget(clear);row.addWidget(self.scan_status,1);dl.addLayout(row)
+        note=QLabel('Only scan a network you own or have permission to use. Infinity limits active LAN discovery to private IPv4 addresses on the network this PC is already connected to.');note.setWordWrap(True);note.setStyleSheet('color:#7896aa;font-size:11px');dl.addWidget(note)
+        self.discovery_table=QTableWidget(0,7);self.discovery_table.setHorizontalHeaderLabels(['Type','Device','IP','MAC','Interface','State','Source']);self.discovery_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);dl.addWidget(self.discovery_table);lay.addWidget(discover,2)
+
+        registry=Card();rl=QVBoxLayout(registry);rtitle=QLabel('INFINITY MESH REGISTRY');rtitle.setStyleSheet('font-weight:800;color:#a477ff');rl.addWidget(rtitle)
+        bar=QHBoxLayout();refresh=QPushButton('Refresh Registry');refresh.clicked.connect(self.refresh);self.need=QLineEdit();self.need.setPlaceholderText('Required capabilities, comma-separated');choose=QPushButton('Choose Device');choose.clicked.connect(self.choose);self.result=QLabel();self.result.setStyleSheet('color:#7896aa');bar.addWidget(refresh);bar.addWidget(self.need,1);bar.addWidget(choose);bar.addWidget(self.result);rl.addLayout(bar)
+        self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Device','Platform','Capabilities','Trusted','Online','Last Seen']);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);rl.addWidget(self.table);lay.addWidget(registry,1);self.refresh()
+
+    def _allow_discovery(self):
+        permission='network.discovery';d=self.core.security.decision(permission)
+        if d=='allow':return True
+        if d=='deny':QMessageBox.warning(self,'Network Discovery','Network discovery is denied in Security Center.');return False
+        msg='Allow nearby-device discovery for this Infinity session?\n\nUse this only on a network you own or have permission to scan. Infinity will not scan ports, test passwords, or probe public Internet addresses.'
+        if QMessageBox.question(self,'Network Discovery Permission',msg)==QMessageBox.Yes:
+            self.core.security.grant_session(permission);return True
+        return False
+
+    def scan_lan(self):
+        if not self._allow_discovery():return
+        self.scan_status.setText('Scanning private LAN…');w=Worker(self.core.network.discover_lan,True);w.signals.result.connect(self.show_discovery);w.signals.error.connect(lambda e:self.scan_status.setText('Scan failed: '+e));self.pool.start(w)
+
+    def scan_bluetooth(self):
+        if not self._allow_discovery():return
+        self.scan_status.setText('Reading nearby/known Bluetooth devices…');w=Worker(self.core.network.discover_b

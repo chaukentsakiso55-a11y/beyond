@@ -1,0 +1,44 @@
+);mb.addWidget(add);mb.addWidget(start);mb.addStretch();ml.addLayout(mb);ml.addWidget(self.mcp);tabs.addTab(mcp,'MCP Servers');self.refresh()
+    def refresh(self):
+        self.core.plugins.scan();self.list.clear()
+        for pid,p in self.core.plugins.plugins.items():it=QListWidgetItem(f"{p.get('name',pid)} · {p.get('version','')} · {'loaded' if p.get('loaded') else 'available'}");it.setData(Qt.UserRole,pid);self.list.addItem(it)
+        self.core.plugins.load_mcp();self.mcp.setRowCount(len(self.core.plugins.mcp_servers))
+        for r,s in enumerate(self.core.plugins.mcp_servers):
+            for c,v in enumerate([s['name'],s['command'],'Running' if s['name'] in self.core.plugins.mcp_processes else 'Stopped']):self.mcp.setItem(r,c,QTableWidgetItem(v))
+    def allow_plugins(self):
+        d=self.core.security.decision('plugins.execute')
+        if d=='allow':return True
+        if d=='deny':QMessageBox.warning(self,'Plugins','plugins.execute is denied in Security Center.');return False
+        if QMessageBox.question(self,'Plugin Permission','Allow plugin/MCP execution for this Infinity session?')==QMessageBox.Yes:self.core.security.grant_session('plugins.execute');return True
+        return False
+    def load_selected(self):
+        items=self.list.selectedItems();
+        if not items or not self.allow_plugins():return
+        ok,msg=self.core.plugins.load_plugin(items[0].data(Qt.UserRole));QMessageBox.information(self,'Plugin',msg);self.refresh()
+    def add_mcp(self):
+        d=QDialog(self);f=QFormLayout(d);name=QLineEdit();cmd=QLineEdit();args=QLineEdit();buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);f.addRow('Name',name);f.addRow('Command',cmd);f.addRow('Arguments',args);f.addRow(buttons)
+        if d.exec() and name.text().strip() and cmd.text().strip():self.core.plugins.add_mcp_server(name.text().strip(),cmd.text().strip(),args.text().split());self.refresh()
+    def start_mcp(self):
+        r=self.mcp.currentRow();
+        if r<0 or not self.allow_plugins():return
+        name=self.mcp.item(r,0).text();ok,msg=self.core.plugins.start_mcp(name);QMessageBox.information(self,'MCP',msg);self.refresh()
+
+class SecurityPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Security Center','Every powerful Infinity capability is policy-controlled and auditable.'));self.table=QTableWidget(0,2);self.table.setHorizontalHeaderLabels(['Capability','Policy']);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);lay.addWidget(self.table);buttons=QHBoxLayout();refresh=QPushButton('Refresh Audit');refresh.clicked.connect(self.refresh_audit);clear=QPushButton('Clear Session Grants');clear.clicked.connect(lambda:self.core.security.revoke_session());buttons.addWidget(refresh);buttons.addWidget(clear);buttons.addStretch();lay.addLayout(buttons);self.audit=QPlainTextEdit();self.audit.setReadOnly(True);lay.addWidget(self.audit,1);self.refresh()
+    def refresh(self):
+        rows=list(self.core.security.policies.items());self.table.setRowCount(len(rows))
+        for r,(perm,mode) in enumerate(rows):self.table.setItem(r,0,QTableWidgetItem(perm));combo=QComboBox();combo.addItems(MODES);combo.setCurrentText(mode);combo.currentTextChanged.connect(lambda m,p=perm:self.core.security.set(p,m));self.table.setCellWidget(r,1,combo)
+        self.refresh_audit()
+    def refresh_audit(self):self.audit.setPlainText('\n'.join(f"{time.strftime('%m-%d %H:%M:%S',time.localtime(x['timestamp']))}  {x['actor']}  {x['action']}  {json.dumps(x['detail'])}" for x in reversed(self.core.security.recent(180))))
+
+class NotificationsPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Notification Center','AEGIS results, workflow runs, pairing alerts, provider issues and system events in one timeline.'));refresh=QPushButton('Refresh');refresh.clicked.connect(self.refresh);lay.addWidget(refresh,0,Qt.AlignLeft);self.list=QListWidget();lay.addWidget(self.list,1);self.timer=QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(3000);self.refresh()
+    def refresh(self):
+        self.list.clear()
+        for n in self.core.notifications.recent(200):self.list.addItem(f"{time.strftime('%m-%d %H:%M',time.localtime(n['created_at']))}   {n['source']}   {n['title']}\n{n['body']}")
+
+class SettingsPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Settings','Appearance Studio, AI configuration, Voice AEGIS, updates and recovery.'));tabs=QTabWidget();lay.addWidget(tabs,1);tabs.addTab(self.appearance_tab(),'Appearance Studio');tabs.addTab(self.ai_tab(),'AI & APIs');tabs.addTab(self.voice_tab(),'Voice');tabs.addTab(self.update_tab(),'Updates & Recov

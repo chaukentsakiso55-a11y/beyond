@@ -1,0 +1,44 @@
+elf.speak_last);send=QPushButton('Send');send.setObjectName('Primary');send.clicked.connect(self.send);actions.addWidget(attach);actions.addWidget(voice);actions.addWidget(speak);actions.addStretch();actions.addWidget(send);cl.addLayout(actions);split.addWidget(center);split.setStretchFactor(1,4);self.refresh_providers();self.refresh_chats();self.render()
+    def refresh_providers(self):
+        cur=self.provider.currentText();names=[p.get('name','') for p in self.core.router.providers(True)];self.provider.clear();self.provider.addItems(names)
+        preferred=self.core.router.config.get('routing',{}).get('default_provider','')
+        target=cur if cur in names and cur not in ('','Local') else (preferred if preferred in names else cur)
+        idx=self.provider.findText(target);self.provider.setCurrentIndex(idx if idx>=0 else (0 if names else -1));self.provider_changed(self.provider.currentText())
+    def provider_changed(self,name):
+        p=self.core.router.provider(name);self.model.clear();self.model.addItems((p or {}).get('models') or ([(p or {}).get('model')] if (p or {}).get('model') else []))
+    def refresh_chats(self):
+        self.chats.clear();
+        for c in self.core.chats.all(self.search.text()):
+            it=QListWidgetItem(c['title']);it.setData(Qt.UserRole,c['id']);self.chats.addItem(it);it.setSelected(c['id']==self.chat_id)
+    def new_chat(self):self.chat_id=self.core.chats.create();self.pending=[];self.refresh_chats();self.render()
+    def select_chat(self):
+        items=self.chats.selectedItems();
+        if items:self.chat_id=items[0].data(Qt.UserRole);self.render()
+    def render(self):
+        c=self.core.chats.chats.get(self.chat_id,{'messages':[]});html=[]
+        for m in c.get('messages',[]):
+            who='YOU' if m['role']=='user' else (m.get('provider') or 'AEGIS');color='#46e6ff' if m['role']=='user' else '#a477ff';body=(m.get('content') or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('\n','<br>');html.append(f"<div style='margin:8px 0;padding:12px;border:1px solid #18344e;border-radius:12px'><b style='color:{color}'>{who}</b><br>{body}</div>")
+        self.transcript.setHtml(''.join(html) or '<span style="color:#7896aa">Start a new Infinity conversation.</span>');self.transcript.verticalScrollBar().setValue(self.transcript.verticalScrollBar().maximum())
+    def attach_files(self):
+        paths,_=QFileDialog.getOpenFileNames(self,'Attach files');
+        for p in paths:
+            if Path(p).stat().st_size<=20*1024*1024:self.pending.append(self.core.attachments.import_file(p,self.chat_id))
+        self.attach_label.setText(', '.join(x['name'] for x in self.pending) or 'No attachments')
+    def send(self):
+        text=self.input.toPlainText().strip();
+        if not text and not self.pending:return
+        self.input.clear();items=list(self.pending);self.pending=[];self.attach_label.setText('No attachments')
+        if self.mode.currentText()=='Agent':self.run_agent(text);return
+        provider=self.provider.currentText() or None;model=self.model.currentText() or None;self.core.chats.add(self.chat_id,'user',text,attachments=items);self.render();context=self.core.memory.context(text,'Infinity OS',8,10000);files=self.core.attachments.context(items);messages=[{'role':'system','content':'You are AEGIS inside Infinity OS. Preserve project architecture and state limitations clearly.'},{'role':'user','content':text+('\n\nPROJECT MEMORY:\n'+context if context else '')+('\n\nFILES:\n'+files if files else '')}]
+        worker=Worker(self.core.router.chat,messages,'default',False,provider,model,True);worker.signals.result.connect(lambda r:self.answer_done(r));worker.signals.error.connect(lambda e:self.answer_done({'text':'Error: '+e,'provider':'AEGIS','model':''}));self.pool.start(worker)
+    def answer_done(self,r):
+        self.core.chats.add(self.chat_id,'assistant',r.get('text',''),r.get('provider',''),r.get('model',''));chat=self.core.chats.chats.get(self.chat_id,{})
+        if len(chat.get('messages',[]))>=10 and len(chat.get('messages',[]))%10==0:self.core.memory.summarize_chat(chat.get('messages',[]),'Infinity OS','Chat summary: '+chat.get('title','AEGIS'))
+        self.refresh_chats();self.render()
+    def run_agent(self,text):
+        worker=Worker(self.core.agent.plan,text or 'Analyze the attached context');worker.signals.result.connect(self.agent_planned);self.pool.start(worker)
+    def agent_planned(self,plan):
+        details='\n'.join(f"{i+1}. {s.title}  [{s.tool}]" for i,s in enumerate(plan.steps));perms={self.core.tools.get(s.tool).permission for s in plan.steps if self.core.tools.get(s.tool) and self.core.tools.get(s.tool).permission and self.core.security.decision(self.core.tools.get(s.tool).permission)=='ask'};msg='AEGIS plan:\n\n'+details
+        if perms:msg+='\n\nPermissions: '+', '.join(sorted(perms))
+        if QMessageBox.question(self,'Run AEGIS Plan',msg+'\n\nExecute?')!=QMessageBox.Yes:return
+        worker=Worker(sel

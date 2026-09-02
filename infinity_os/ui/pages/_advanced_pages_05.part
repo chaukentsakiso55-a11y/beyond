@@ -1,0 +1,26 @@
+ery')
+    def appearance_tab(self):
+        w=QWidget();f=QFormLayout(w);st=self.core.appearance.settings;pal=self.core.appearance.palette();self.preset=QComboBox();self.preset.addItems(PRESETS.keys());self.preset.setCurrentText(st.get('preset','Infinity Neon'));self.color_buttons={}
+        for key,label,default in [('accent','Accent',pal['accent']),('background','Background',pal['bg']),('panel','Sidebar / panel',pal['panel']),('card','Cards',pal['card'])]:
+            b=QPushButton(st.get(key) or 'Use preset '+label.lower());b.clicked.connect(lambda _,k=key,d=default:self.choose_color(k,d));self.color_buttons[key]=b
+        self.density=QComboBox();self.density.addItems(['compact','comfortable','spacious']);self.density.setCurrentText(st.get('density','comfortable'));self.sidebar=QComboBox();self.sidebar.addItems(['compact','standard','wide']);self.sidebar.setCurrentText(st.get('sidebar','standard'));self.scale=QComboBox();self.scale.addItems(['0.85','0.95','1.0','1.1','1.2','1.3']);self.scale.setCurrentText(str(st.get('font_scale',1.0)));self.effects=QComboBox();self.effects.addItems(['minimal','glass','glow']);self.effects.setCurrentText(st.get('effects','glass'));apply=QPushButton('Apply Appearance');apply.setObjectName('Primary');apply.clicked.connect(self.apply_appearance);f.addRow('Theme preset',self.preset)
+        for key,label in [('accent','Custom accent'),('background','Custom background'),('panel','Custom sidebar / panel'),('card','Custom card color')]:f.addRow(label,self.color_buttons[key])
+        f.addRow('Density',self.density);f.addRow('Sidebar width',self.sidebar);f.addRow('Font scale',self.scale);f.addRow('Effects',self.effects);f.addRow(apply);return w
+    def choose_color(self,key,default):
+        current=self.color_buttons[key].text();c=QColorDialog.getColor(QColor(current if current.startswith('#') else default),self)
+        if c.isValid():self.color_buttons[key].setText(c.name())
+    def apply_appearance(self):
+        data={'preset':self.preset.currentText(),'density':self.density.currentText(),'sidebar':self.sidebar.currentText(),'font_scale':float(self.scale.currentText()),'effects':self.effects.currentText()}
+        for key,b in self.color_buttons.items():data[key]=b.text() if b.text().startswith('#') else ''
+        self.core.appearance.save(data);QApplication.instance().setStyleSheet(self.core.appearance.qss());QMessageBox.information(self,'Appearance','Theme applied. Sidebar width changes take effect after restart.')
+    def ai_tab(self):
+        from .core_pages import AiNexusPage
+        w=QWidget();v=QVBoxLayout(w);info=QLabel('Full Multi-API Manager: add unlimited providers, multiple models, routing, health checks, cost tracking and Model Arena directly from Settings.');info.setWordWrap(True);v.addWidget(info);self.embedded_ai=AiNexusPage(self.core);v.addWidget(self.embedded_ai,1);return w
+    def update_api_summary(self):self.api_summary.setText(f"Configured providers: {len(self.core.router.providers())} · Enabled: {len(self.core.router.providers(True))}") if hasattr(self,'api_summary') else None
+    def voice_tab(self):
+        w=QWidget();f=QFormLayout(w);self.wake=QCheckBox('Enable wake-word listener');self.wake.setChecked(self.core.voice.config.get('enabled',False));self.words=QLineEdit(', '.join(self.core.voice.config.get('wakewords',[])));save=QPushButton('Save Voice Settings');save.clicked.connect(self.save_voice);test=QPushButton('Test Voice Output');test.clicked.connect(lambda:self.core.voice.speak('AEGIS voice output is online.'));f.addRow(self.wake);f.addRow('Wake words',self.words);f.addRow(save);f.addRow(test);return w
+    def save_voice(self):self.core.voice.config['enabled']=self.wake.isChecked();self.core.voice.config['wakewords']=[x.strip().lower() for x in self.words.text().split(',') if x.strip()];self.core.voice.save();QMessageBox.information(self,'Voice','Voice settings saved. Restart Infinity to start wake listening automatically.')
+    def update_tab(self):
+        w=QWidget();v=QVBoxLayout(w);repo_row=QHBoxLayout();self.update_repo=QLineEdit(self.core.updater.repo);self.update_repo.setPlaceholderText('owner/repository');save_repo=QPushButton('Save Repository');save_repo.clicked.connect(self.save_update_repo);repo_row.addWidget(QLabel('GitHub release repository'));repo_row.addWidget(self.update_repo,1);repo_row.addWidget(save_repo);v.addLayout(repo_row);self.update_out=QPlainTextEdit();self.update_out.setReadOnly(True);row=QHBoxLayout();check=QPushButton('Check GitHub Release');check.clicked.connect(self.check_update);backup=QPushButton('Create Backup');backup.clicked.connect(self.backup);rollback=QPushButton('Rollback Latest');rollback.clicked.connect(self.rollback);safe=QPushButton('Toggle Safe Mode');safe.clicked.connect(self.safe);row.addWidget(check);row.addWidget(backup);row.addWidget(rollback);row.addWidget(safe);row.addStretch();v.addLayout(row);v.addWidget(self.update_out,1);return w
+    def save_update_repo(self):
+        repo=self.up

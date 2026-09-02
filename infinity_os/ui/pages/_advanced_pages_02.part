@@ -1,0 +1,46 @@
+ super().__init__();self.scene=QGraphicsScene(self);self.setScene(self.scene);self.setMinimumHeight(180)
+    def set_steps(self,steps):
+        self.scene.clear();positions={};x=10;y=28
+        for i,step in enumerate(steps):
+            sid=step.get('id') or str(i);positions[sid]=(x,y);rect=QGraphicsRectItem(x,y,190,62);rect.setPen(QPen(QColor('#18344e')));rect.setBrush(QColor('#101d30'));self.scene.addItem(rect)
+            text=QGraphicsTextItem(f"{i+1}. {step.get('tool','')}\n{json.dumps(step.get('args') or {})[:70]}");text.setDefaultTextColor(QColor('#edfaff'));text.setPos(x+8,y+7);self.scene.addItem(text);x+=225
+        for i,step in enumerate(steps):
+            sid=step.get('id') or str(i);x2,y2=positions[sid]
+            deps=step.get('depends_on') or ([steps[i-1].get('id') or str(i-1)] if i else [])
+            for dep in deps:
+                if dep in positions:
+                    x1,y1=positions[dep];self.scene.addLine(x1+190,y1+31,x2,y2+31,QPen(QColor('#46e6ff')))
+        self.scene.setSceneRect(self.scene.itemsBoundingRect().adjusted(-10,-10,10,10))
+
+class WorkflowsPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;self.pool=QThreadPool.globalInstance();lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Infinity Workflows','Create repeatable automations from natural language or tool steps. Scheduled workflows only run permissions already allowed by Security Center.'));bar=QHBoxLayout();prompt=QPushButton('+ Workflow from Prompt');prompt.setObjectName('Primary');prompt.clicked.connect(self.from_prompt);run=QPushButton('Run Selected');run.clicked.connect(self.run_selected);toggle=QPushButton('Enable / Disable');toggle.clicked.connect(self.toggle);delete=QPushButton('Delete');delete.setObjectName('Danger');delete.clicked.connect(self.delete);bar.addWidget(prompt);bar.addWidget(run);bar.addWidget(toggle);bar.addWidget(delete);bar.addStretch();lay.addLayout(bar);self.table=QTableWidget(0,5);self.table.setHorizontalHeaderLabels(['Name','Steps','Schedule','Enabled','Last Run']);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);split=QSplitter(Qt.Vertical);split.addWidget(self.table);self.graph=WorkflowGraphView();split.addWidget(self.graph);lay.addWidget(split,1);self.table.itemSelectionChanged.connect(self.show_graph);self.refresh()
+    def refresh(self):
+        self.core.workflows.load();rows=self.core.workflows.workflows;self.table.setRowCount(len(rows))
+        for r,w in enumerate(rows):
+            vals=[w['name'],str(len(w.get('steps',[]))),('Every '+str(w.get('interval_minutes'))+' min') if w.get('interval_minutes') else 'Manual','Yes' if w.get('enabled') else 'No',time.strftime('%m-%d %H:%M',time.localtime(w['last_run'])) if w.get('last_run') else 'Never']
+            for c,v in enumerate(vals):self.table.setItem(r,c,QTableWidgetItem(v))
+            self.table.item(r,0).setData(Qt.UserRole,w['id'])
+    def selected(self):
+        r=self.table.currentRow();return None if r<0 else self.table.item(r,0).data(Qt.UserRole)
+    def show_graph(self):
+        wid=self.selected();wf=next((x for x in self.core.workflows.workflows if x.get('id')==wid),None);self.graph.set_steps((wf or {}).get('steps',[]))
+    def from_prompt(self):
+        text,ok=QInputDialog.getMultiLineText(self,'Workflow from Prompt','Describe the repeatable workflow:')
+        if not ok or not text.strip():return
+        worker=Worker(self.core.agent.plan,text.strip());worker.signals.result.connect(self.plan_ready);self.pool.start(worker)
+    def plan_ready(self,plan):
+        d=QDialog(self);d.setWindowTitle('Create Workflow');f=QFormLayout(d);name=QLineEdit(plan.request[:40]);interval=QSpinBox();interval.setRange(0,10080);interval.setSuffix(' min (0 = manual)');steps=QPlainTextEdit('\n'.join(f'{s.tool}  {json.dumps(s.args)}' for s in plan.steps));steps.setReadOnly(True);buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);f.addRow('Name',name);f.addRow('Repeat interval',interval);f.addRow('Planned steps',steps);f.addRow(buttons)
+        if d.exec():self.core.workflows.create(name.text().strip() or 'Workflow',[{'tool':s.tool,'args':s.args} for s in plan.steps],interval.value(),True);self.refresh()
+    def run_selected(self):
+        wid=self.selected();
+        if not wid:return
+        worker=Worker(self.core.workflows.run,wid);worker.signals.result.connect(lambda r:(QMessageBox.information(self,'Workflow','Completed' if r.get('ok') else json.dumps(r,indent=2)),self.refresh()));self.pool.start(worker)
+    def toggle(self):
+        if self.selected():self.core.workflows.toggle(self.selected());self.refresh()
+    def delete(self):
+        if self.selected() and QMessageBox.question(self,'Delete Workflow','Delete selected workflow?')==QMessageBox.Yes:self.core.workflows.delete(self.selected());self.refresh()
+
+class ControlPage(QWidget):
+    def __init__(self,core):
+        super().__ini

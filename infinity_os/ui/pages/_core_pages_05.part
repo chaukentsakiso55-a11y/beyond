@@ -1,0 +1,39 @@
+ct(self.arena_done);self.pool.start(worker)
+    def arena_done(self,rows):
+        self.arena_winner.clear();self.arena_winner.addItems([r.get('provider','') for r in rows if r.get('ok')]);html=[]
+        for r in rows:html.append(f"<h3>{r.get('provider')} · {r.get('model')} · {r.get('latency',0):.2f}s</h3><div>{(r.get('text') or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace(chr(10),'<br>')}</div><hr>")
+        self.arena_out.setHtml(''.join(html))
+
+    def mark_winner(self):
+        name=self.arena_winner.currentText()
+        if name:self.core.router.record_arena_feedback(name,1.0);QMessageBox.information(self,'Model Arena',f'{name} received a positive task-quality vote and will gain a small routing preference over time.')
+
+class MemoryPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('Project Memory 2.0','SQLite + full-text + lightweight semantic ranking, document indexing and workspace-aware context.'));bar=QHBoxLayout();self.ws=QComboBox();self.ws.addItems(['All','Personal','School','Cyber Pulse','Coding','StudyLock','Infinity OS']);self.q=QLineEdit();self.q.setPlaceholderText('Search memory semantically');self.q.returnPressed.connect(self.search);find=QPushButton('Search');find.clicked.connect(self.search);add=QPushButton('+ Memory');add.clicked.connect(self.add_memory);doc=QPushButton('Index document');doc.clicked.connect(self.index_document);bar.addWidget(self.ws);bar.addWidget(self.q,1);bar.addWidget(find);bar.addWidget(add);bar.addWidget(doc);lay.addLayout(bar);split=QSplitter();self.results=QListWidget();self.results.itemSelectionChanged.connect(self.preview);self.body=QTextBrowser();split.addWidget(self.results);split.addWidget(self.body);split.setStretchFactor(1,3);lay.addWidget(split,1);self.rows=[];self.search()
+    def search(self):
+        ws=None if self.ws.currentText()=='All' else self.ws.currentText();self.rows=self.core.memory.search(self.q.text(),ws,80);self.results.clear()
+        for r in self.rows:it=QListWidgetItem(f"[{r['workspace']}] {r['title']}");it.setData(Qt.UserRole,r['id']);self.results.addItem(it)
+    def preview(self):
+        items=self.results.selectedItems();
+        if not items:return
+        mid=items[0].data(Qt.UserRole);r=next((x for x in self.rows if x['id']==mid),None)
+        if r:self.body.setPlainText(f"{r['title']}\nWorkspace: {r['workspace']}\nTags: {r['tags']}\nSource: {r['source']}\n\n{r['content']}")
+    def add_memory(self):
+        d=QDialog(self);d.setWindowTitle('New Memory');f=QFormLayout(d);ws=QComboBox();ws.addItems(['Personal','School','Cyber Pulse','Coding','StudyLock','Infinity OS']);ws.setCurrentText('Infinity OS');title=QLineEdit();body=QPlainTextEdit();buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);f.addRow('Workspace',ws);f.addRow('Title',title);f.addRow('Content',body);f.addRow(buttons)
+        if d.exec() and title.text().strip():self.core.memory.add(ws.currentText(),title.text().strip(),body.toPlainText(),[]);self.search()
+    def index_document(self):
+        path,_=QFileDialog.getOpenFileName(self,'Index document');
+        if path:self.core.memory.index_document(path,'Infinity OS');self.search();QMessageBox.information(self,'Memory','Document indexed into Project Memory.')
+
+class SystemPage(QWidget):
+    def __init__(self,core):
+        super().__init__();self.core=core;lay=QVBoxLayout(self);lay.addWidget(SectionHeader('System Observatory','Background telemetry, processes, dependency diagnostics and performance visibility.'));grid=QGridLayout();self.bars={}
+        for i,(k,t) in enumerate([('cpu','CPU'),('ram','RAM'),('disk','Storage'),('battery','Battery')]):c=Card();cl=QVBoxLayout(c);cl.addWidget(QLabel(t));bar=QProgressBar();bar.setRange(0,100);cl.addWidget(bar);self.bars[k]=bar;grid.addWidget(c,0,i)
+        lay.addLayout(grid);diag=QHBoxLayout();run=QPushButton('Run diagnostics');run.clicked.connect(self.run_diag);safe=QPushButton('Toggle Safe Mode');safe.clicked.connect(self.safe_mode);self.diag_label=QLabel();self.diag_label.setStyleSheet('color:#7896aa');diag.addWidget(run);diag.addWidget(safe);diag.addWidget(self.diag_label,1);lay.addLayout(diag);self.proc=QTableWidget(0,4);self.proc.setHorizontalHeaderLabels(['PID','Process','CPU','Memory']);self.proc.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);lay.addWidget(self.proc,1);self.timer=QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(3500);self.refresh()
+    def refresh(self):
+        d=self.core.system.latest or self.core.system.snapshot()
+        for k in ('cpu','ram','disk'):self.bars[k].setValue(round(d.get(k,0)))
+        self.bars['battery'].setValue(0 if d.get('battery') is None else round(d['battery']));rows=self.core.system.processes(50);self.proc.setRowCount(len(rows))
+        for r,p in enumerate(rows):
+            for c,v in
